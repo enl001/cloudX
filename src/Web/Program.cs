@@ -26,18 +26,20 @@ if (builder.Environment.IsDevelopment() || builder.Environment.EnvironmentName =
     // Configure SQL Server (local)
     Microsoft.eShopWeb.Infrastructure.Dependencies.ConfigureServices(builder.Configuration, builder.Services);
 }
-else{
+else
+{
     // Configure SQL Server (prod)
-    var credential = new ChainedTokenCredential(new AzureDeveloperCliCredential(), new DefaultAzureCredential());
-    builder.Configuration.AddAzureKeyVault(new Uri(builder.Configuration["AZURE_KEY_VAULT_ENDPOINT"] ?? ""), credential);
-    builder.Services.AddDbContext<CatalogContext>(c =>
+    //var credential = new ChainedTokenCredential(new AzureDeveloperCliCredential(), new DefaultAzureCredential());
+    //builder.Configuration.AddAzureKeyVault(new Uri(builder.Configuration["AZURE_KEY_VAULT_ENDPOINT"] ?? ""), credential);
+    builder.Services.AddDbContext<CatalogContext>(options =>
     {
-        var connectionString = builder.Configuration[builder.Configuration["AZURE_SQL_CATALOG_CONNECTION_STRING_KEY"] ?? ""];
-        c.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure());
+        var connectionString = builder.Configuration["AZURE_SQL_CATALOG_CONNECTION_STRING"] ?? "";
+
+        options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure());
     });
     builder.Services.AddDbContext<AppIdentityDbContext>(options =>
     {
-        var connectionString = builder.Configuration[builder.Configuration["AZURE_SQL_IDENTITY_CONNECTION_STRING_KEY"] ?? ""];
+        var connectionString = builder.Configuration["AZURE_SQL_IDENTITY_CONNECTION_STRING"] ?? "";
         options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure());
     });
 }
@@ -102,6 +104,18 @@ var baseUrlConfig = configSection.Get<BaseUrlConfiguration>();
 builder.Services.AddScoped<HttpClient>(s => new HttpClient
 {
     BaseAddress = new Uri(baseUrlConfig!.WebBase)
+});
+
+builder.Services.AddHttpClient("FunctionsHttpClient", httpClient =>
+{
+    httpClient.BaseAddress = new Uri("https://cloudxlearn-functions.azurewebsites.net/api/");
+
+    var key = builder.Configuration["FUNCTION_KEY"] ?? throw new Exception("No key");
+
+    httpClient.DefaultRequestHeaders.Add(
+        Microsoft.Net.Http.Headers.HeaderNames.Accept, "application/json");
+    httpClient.DefaultRequestHeaders.Add(
+        "x-functions-key", key);
 });
 
 // add blazor services

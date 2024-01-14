@@ -1,11 +1,13 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
 using Ardalis.GuardClauses;
+using System.Net.Http;
 using Microsoft.eShopWeb.ApplicationCore.Entities;
 using Microsoft.eShopWeb.ApplicationCore.Entities.BasketAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Entities.OrderAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.ApplicationCore.Specifications;
+using System.Net.Http.Json;
 
 namespace Microsoft.eShopWeb.ApplicationCore.Services;
 
@@ -15,16 +17,20 @@ public class OrderService : IOrderService
     private readonly IUriComposer _uriComposer;
     private readonly IRepository<Basket> _basketRepository;
     private readonly IRepository<CatalogItem> _itemRepository;
+    private readonly HttpClient _httpClient;
 
     public OrderService(IRepository<Basket> basketRepository,
         IRepository<CatalogItem> itemRepository,
         IRepository<Order> orderRepository,
-        IUriComposer uriComposer)
+        IUriComposer uriComposer,
+        IHttpClientFactory httpClientFactory)
     {
         _orderRepository = orderRepository;
         _uriComposer = uriComposer;
         _basketRepository = basketRepository;
         _itemRepository = itemRepository;
+
+        _httpClient = httpClientFactory.CreateClient("FunctionsHttpClient");
     }
 
     public async Task CreateOrderAsync(int basketId, Address shippingAddress)
@@ -49,5 +55,16 @@ public class OrderService : IOrderService
         var order = new Order(basket.BuyerId, shippingAddress, items);
 
         await _orderRepository.AddAsync(order);
+
+
+        // For DeliveryOrderProcessor fn
+        await _httpClient.PostAsJsonAsync(
+            "DeliveryOrderProcessor",
+            new OrderDocumentModel(
+                System.Guid.NewGuid().ToString(),
+                basket.BuyerId,
+                shippingAddress,
+                items,
+                basket.TotalSum));
     }
 }

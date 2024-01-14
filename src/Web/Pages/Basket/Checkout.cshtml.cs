@@ -1,4 +1,7 @@
-﻿using Ardalis.GuardClauses;
+﻿using System.Text.Json;
+using Ardalis.GuardClauses;
+using Azure.Identity;
+using Azure.Messaging.ServiceBus;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -56,6 +59,11 @@ public class CheckoutModel : PageModel
             await _basketService.SetQuantities(BasketModel.Id, updateModel);
             await _orderService.CreateOrderAsync(BasketModel.Id, new Address("123 Main St.", "Kent", "OH", "United States", "44240"));
             await _basketService.DeleteBasketAsync(BasketModel.Id);
+
+            // For OrderItemReserver fn
+            var orderItems = items.Select(i => new ReservedOrderItem(i.Id, i.Quantity));
+            var json = JsonSerializer.Serialize(orderItems);
+            await SendOrderMessageAsync(json);
         }
         catch (EmptyBasketOnCheckoutException emptyBasketOnCheckoutException)
         {
@@ -65,6 +73,32 @@ public class CheckoutModel : PageModel
         }
 
         return RedirectToPage("Success");
+    }
+
+    private static async Task SendOrderMessageAsync(string json)
+    {
+        var ns = "sbus-ns-cloudxlearn.servicebus.windows.net";
+        var queue = "orders";
+
+        // Set the transport type to AmqpWebSockets so that the ServiceBusClient uses the port 443. 
+        // If you use the default AmqpTcp, ensure that ports 5671 and 5672 are open.
+        var clientOptions = new ServiceBusClientOptions
+        {
+            TransportType = ServiceBusTransportType.AmqpWebSockets,
+            RetryOptions = new ServiceBusRetryOptions
+            {
+                Delay = TimeSpan.FromSeconds(10),
+                MaxDelay = TimeSpan.FromSeconds(30),
+                Mode = ServiceBusRetryMode.Exponential,
+                MaxRetries = 3,
+            }
+        };
+
+        await using var client = new ServiceBusClient(ns, new ManagedIdentityCredential(), clientOptions);
+        await using ServiceBusSender sender = client.CreateSender(queue);
+
+        var message = new ServiceBusMessage(json);
+        await sender.SendMessageAsync(message);
     }
 
     private async Task SetBasketModelAsync()

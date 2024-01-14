@@ -13,6 +13,7 @@ public class Basket : BaseEntity, IAggregateRoot
 
     public int TotalItems => _items.Sum(i => i.Quantity);
 
+    public decimal TotalSum => _items.Sum(i => i.UnitPrice * i.Quantity);
 
     public Basket(string buyerId)
     {
